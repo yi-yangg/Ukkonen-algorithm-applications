@@ -13,9 +13,9 @@ class Node:
 
 
 class Edge:
-    def __init__(self):
-        self.start_point = NAN
-        self.end_point = NAN
+    def __init__(self, start, end):
+        self.start_point = start
+        self.end_point = end
         self.parent_node = None
         self.child_node = None
 
@@ -26,6 +26,7 @@ class SuffixTree:
 
     def add_string(self, string: str):
         n = len(string)
+        # For each phase add the phase character
         for i in range(n):
             self.add_char(string, i)
 
@@ -54,10 +55,10 @@ class SuffixTree:
                         length_of_path -= length_of_edge
                         current_node = current_edge.child_node
                         break
-
+                    # if the traversed path is contained inside the edge
                     elif length_of_edge > length_of_path:
                         break
-
+                    # if path is more than the length of the edge, traverse down further
                     else:
                         length_of_path -= length_of_edge
                         current_node = current_edge.child_node
@@ -80,12 +81,10 @@ class SuffixTree:
                     # If theres no edge, then rule 2 case 1, create new leaf and edge
                     else:
                         new_node = Node()
-                        new_edge = Edge()
+                        new_edge = Edge(phase, phase)
 
                         new_node.leaf_num = j
                         new_node.parent_edge = new_edge
-
-                        new_edge.start_point = new_edge.end_point = phase
 
                         new_edge.parent_node = current_node
                         new_edge.child_node = new_node
@@ -107,9 +106,9 @@ class SuffixTree:
                         new_internal_node.parent_edge = branch_edge
 
                         # Add new extended edge
-                        new_extended_edge = Edge()
-                        new_extended_edge.start_point = char_to_check_index
-                        new_extended_edge.end_point = branch_edge.end_point
+                        # Set start point to the mismatched pos and end to the existing branch end
+                        new_extended_edge = Edge(
+                            char_to_check_index, branch_edge.end_point)
                         new_extended_edge.parent_node = new_internal_node
                         new_extended_edge.child_node = branch_edge.child_node
 
@@ -122,14 +121,13 @@ class SuffixTree:
 
                         # Create new branch for char with leaf node
                         new_leaf_node = Node()
-                        new_branch_edge = Edge()
+                        new_branch_edge = Edge(phase, phase)
 
                         new_leaf_node.parent_edge = new_branch_edge
                         new_leaf_node.leaf_num = j
 
                         new_branch_edge.parent_node = new_internal_node
                         new_branch_edge.child_node = new_leaf_node
-                        new_branch_edge.start_point = new_branch_edge.end_point = phase
 
                         new_internal_node.children[get_index_from_char(
                             char_to_check)] = new_extended_edge
