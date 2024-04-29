@@ -4,145 +4,184 @@ MAX_ASCII_CHAR_NO = 126
 ASCII_NUM = MAX_ASCII_CHAR_NO - MIN_ASCII_CHAR_NO + 1
 NAN = -1
 
+global_end = float("inf")
+
 
 class Node:
     def __init__(self):
         self.children = [None] * ASCII_NUM
-        self.parent_edge = None
         self.leaf_num = NAN
+        self.suffix_link = None
 
 
 class Edge:
     def __init__(self, start, end):
         self.start_point = start
         self.end_point = end
-        self.parent_node = None
         self.child_node = None
 
 
 class SuffixTree:
-    def __init__(self):
+    def __init__(self, string):
+        self.string = string
         self.root = Node()
+        self.active_node = None
+        self.remainder_start = 0
+        self.remainder_end = -1
+        self.last_j = -1
 
-    def add_string(self, string: str):
-        n = len(string)
+    def get_remainder_length(self):
+        return self.remainder_end - self.remainder_start + 1
+
+    def get_edge_length(self, edge: Edge, phase: int):
+        end_point = edge.end_point
+        # If the child code of the edge is a leaf then end point is your phase
+        if edge.child_node.leaf_num != NAN:
+            end_point = phase
+
+        return end_point - edge.start_point + 1
+
+    def add_string(self):
+        n = len(self.string)
+        self.active_node = self.root
+
         # For each phase add the phase character
         for i in range(n):
-            self.add_char(string, i)
+            self.add_char(i)
 
-    def add_char(self, string: str, phase: int):
-        char = string[phase]
-        # extension starts from 0 to i
-        for j in range(phase + 1):
-            current_path = string[j:phase]
-            current_node = self.root
-            length_of_path = len(current_path)
+    def add_char(self, phase: int):
+        prev_added_node = None
 
-            # if there exist a path, traverse down the path
-            if current_path:
-                current_char = string[j]
-                # traversing down path
-                while current_node:
-                    current_edge = current_node.children[get_index_from_char(
-                        current_char)]
-                    if not current_edge:
+        for j in range(self.last_j + 1, phase + 1):
+
+            # Perform skip count, get length of remainder
+            remainder_length = self.get_remainder_length()
+
+            # If remainder is valid only skip count
+            if remainder_length > 0:
+                # Get the next edge from the active node using remainder start
+                while True:
+                    next_edge_index = get_index_from_char(
+                        self.string[self.remainder_start])
+                    next_edge = self.active_node.children[next_edge_index]
+                    # If next edge is None then break
+                    if not next_edge:
                         break
 
-                    # get length of edge
-                    length_of_edge = current_edge.end_point - current_edge.start_point + 1
-                    # leads to the leaf, set current node to leaf node
-                    if length_of_edge == length_of_path:
-                        length_of_path -= length_of_edge
-                        current_node = current_edge.child_node
-                        break
-                    # if the traversed path is contained inside the edge
-                    elif length_of_edge > length_of_path:
-                        break
-                    # if path is more than the length of the edge, traverse down further
+                    # Get edge length and compare with remainder length
+                    next_edge_length = self.get_edge_length(next_edge, phase)
+
+                    # Check if remainder length is greater than edge length, if greater than can traverse deeper
+                    if remainder_length >= next_edge_length:
+                        # Minus of the edge length from remainder length
+                        remainder_length -= next_edge_length
+                        # Check if remainder length is not zero then traverse down the tree
+                        if remainder_length:
+                            self.remainder_start += next_edge_length
+                        # If remainder length is zero then set start to the current phase character
+                        else:
+                            self.remainder_start = phase
+                        # Traverse down by setting active node to child of edge
+                        self.active_node = next_edge.child_node
                     else:
-                        length_of_path -= length_of_edge
-                        current_node = current_edge.child_node
-                        current_char = current_path[len(
-                            current_path) - length_of_path]
-
-            # check if current node is a leaf, if it is then perform rule 1 extension
-            if current_node.leaf_num != NAN:
-                current_node.parent_edge.end_point += 1
-
+                        break
+            # If remainder is less than or equal 0
             else:
-                # if length of path is left with 0
-                if not length_of_path:
-                    # check if extended char is a child of current_node
-                    extended_edge = current_node.children[get_index_from_char(
-                        char)]
-                    # If theres an edge under that already exists, then rule 3
-                    if extended_edge:
-                        return
-                    # If theres no edge, then rule 2 case 1, create new leaf and edge
-                    else:
-                        new_node = Node()
-                        new_edge = Edge(phase, phase)
+                # Then just get the edge by using the current phase character
+                next_edge_index = get_index_from_char(
+                    self.string[phase])
+                next_edge = self.active_node.children[next_edge_index]
 
-                        new_node.leaf_num = j
-                        new_node.parent_edge = new_edge
+            # If edge doesn't exist then create edge on existing node rule 2 case 1
+            if not next_edge:
+                # Rule 2 case 1 (create edge and leaf)
+                new_leaf = Node()
+                new_edge = Edge(phase, global_end)
+                new_edge.child_node = new_leaf
+                new_leaf.leaf_num = j
 
-                        new_edge.parent_node = current_node
-                        new_edge.child_node = new_node
-                        current_node.children[get_index_from_char(
-                            char)] = new_edge
-                # If theres still remaining path, go to the end of the path
+                self.active_node.children[next_edge_index] = new_edge
+
+                # Since current j extension in phase i uses case 2, this means j extension in phase i+1 must use rule 1
+                self.last_j += 1
+
+                # Resolve any suffix link for previous created node, set to active node
+                if prev_added_node:
+                    prev_added_node.suffix_link = self.active_node
+                    prev_added_node = None
+
+            # If edge connecting the active node already exists, check if the current phase char exists or not
+            else:
+                # Get remainder length, 0 when the end is lesser than start, else just use function to get length
+                len_remainder = 0 if self.remainder_end < self.remainder_start else self.get_remainder_length()
+                char_to_check_index = next_edge.start_point + len_remainder
+                # Rule 3 where the character already exist in the edge
+                if self.string[char_to_check_index] == self.string[phase]:
+                    # Update remainder to the matched string
+                    self.remainder_start = next_edge.start_point
+                    self.remainder_end = char_to_check_index
+                    # Resolve any suffix link, set to active node
+                    if prev_added_node:
+                        prev_added_node = self.active_node
+                    break
+
+                # Rule 2 Case 2 where character doesn't match character in edge
                 else:
-                    branch_char = current_path[
-                        len(current_path) - length_of_path]
-                    branch_edge = current_node.children[get_index_from_char(
-                        branch_char)]
+                    # Create internal node, new extended edge, new leaf edge and node
+                    new_internal_node = Node()
+                    # Set suffix link to root
+                    new_internal_node.suffix_link = self.root
+                    # Add new extended edge
+                    # Set start point to the mismatched pos and end to the existing branch end
+                    new_extended_edge = Edge(
+                        char_to_check_index, next_edge.end_point)
 
-                    char_to_check_index = branch_edge.start_point + length_of_path
-                    char_to_check = string[char_to_check_index]
-                    # If next char in existing path is not the same as string[phase], rule 2 case 2
-                    if char_to_check != char:
-                        # Add new internal node
-                        new_internal_node = Node()
-                        new_internal_node.parent_edge = branch_edge
+                    new_extended_edge.child_node = next_edge.child_node
 
-                        # Add new extended edge
-                        # Set start point to the mismatched pos and end to the existing branch end
-                        new_extended_edge = Edge(
-                            char_to_check_index, branch_edge.end_point)
-                        new_extended_edge.parent_node = new_internal_node
-                        new_extended_edge.child_node = branch_edge.child_node
+                    # Update existing edge
+                    next_edge.end_point = char_to_check_index - 1
+                    next_edge.child_node = new_internal_node
 
-                        # Updating leaf node parent edge
-                        branch_edge.child_node.parent_edge = new_extended_edge
+                    # Create new branch for char with leaf node
+                    new_leaf_node = Node()
+                    new_branch_edge = Edge(phase, global_end)
 
-                        # Update existing edge
-                        branch_edge.end_point = branch_edge.start_point + length_of_path - 1
-                        branch_edge.child_node = new_internal_node
+                    new_leaf_node.leaf_num = j
 
-                        # Create new branch for char with leaf node
-                        new_leaf_node = Node()
-                        new_branch_edge = Edge(phase, phase)
+                    new_branch_edge.child_node = new_leaf_node
 
-                        new_leaf_node.parent_edge = new_branch_edge
-                        new_leaf_node.leaf_num = j
+                    # Set internal node children to be the new extended edge and new leaf edge
+                    new_internal_node.children[get_index_from_char(
+                        self.string[char_to_check_index])] = new_extended_edge
+                    new_internal_node.children[get_index_from_char(
+                        self.string[phase])] = new_branch_edge
 
-                        new_branch_edge.parent_node = new_internal_node
-                        new_branch_edge.child_node = new_leaf_node
+                    # Resolve suffix link for previous added internal node and link to newly created internal node
+                    if prev_added_node:
+                        prev_added_node.suffix_link = new_internal_node
 
-                        new_internal_node.children[get_index_from_char(
-                            char_to_check)] = new_extended_edge
-                        new_internal_node.children[get_index_from_char(
-                            char)] = new_branch_edge
+                    # Set previous added internal node to the newly created node
+                    prev_added_node = new_internal_node
 
-                    else:
-                        return
+                    # Increment last j since we used rule 2, next j of phase i + 1 will use rule 1
+                    self.last_j += 1
 
-    def dfs(self, node, string):
-        for child in node.children:
+            # Moving to next extension
+            if self.active_node == self.root and self.get_remainder_length() > 0:
+                self.remainder_start += 1
 
+            elif self.active_node != self.root:
+                self.active_node = self.active_node.suffix_link
+
+    def dfs(self, node, depth=0):
+        for index, child in enumerate(node.children):
             if child:
-                print(string[child.start_point:child.end_point+1])
-                self.dfs(child.child_node, string)
+                if (not self.string[child.start_point: min(child.end_point, len(self.string)-1) + 1]):
+                    print(child.start_point, min(
+                        child.end_point, len(self.string)-1) + 1, index)
+                print(
+                    "|- " * depth + self.string[child.start_point: min(child.end_point, len(self.string)-1) + 1])
+                self.dfs(child.child_node, depth+1)
 
 
 def get_index_from_char(c: str):
@@ -150,10 +189,11 @@ def get_index_from_char(c: str):
 
 
 if __name__ == "__main__":
-    suffix_tree = SuffixTree()
-    string = "abacabad"
-    suffix_tree.add_string(string)
+    string = "abacabadac$"
+    suffix_tree = SuffixTree(string)
+
+    suffix_tree.add_string()
 
     current_node = suffix_tree.root
 
-    suffix_tree.dfs(current_node, string)
+    suffix_tree.dfs(current_node)
