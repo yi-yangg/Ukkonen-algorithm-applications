@@ -1,8 +1,6 @@
-MIN_ASCII_CHAR_NO = 36
-MAX_ASCII_CHAR_NO = 126
+import sys
+from tools import read_file, write_file, ASCII_NUM, NAN, get_index_from_char
 
-ASCII_NUM = MAX_ASCII_CHAR_NO - MIN_ASCII_CHAR_NO + 1
-NAN = -1
 
 global_end = float("inf")
 
@@ -30,6 +28,8 @@ class SuffixTree:
         self.remainder_end = -1
         self.last_j = -1
         self.prev_added_node = None
+
+        self.add_string()
 
     def get_remainder_length(self):
         return self.remainder_end - self.remainder_start + 1
@@ -200,23 +200,35 @@ class SuffixTree:
                     suffix_array.append(child.child_node.leaf_num)
                 self.dfs(child.child_node, suffix_array, depth+1, verbosity)
 
+    def get_suffix_array(self):
+        suffix_array = []
+        self.dfs(self.root, suffix_array)
+        return suffix_array
 
-def get_index_from_char(c: str):
-    return ord(c) - MIN_ASCII_CHAR_NO
+
+def get_rank_from_position(suffix_array, position_list):
+    rank_arr = []
+    for p in position_list:
+        rank_arr.append(suffix_array.index(p - 1) + 1)
+
+    return rank_arr
 
 
 if __name__ == "__main__":
-    string = "mississippi$"
-    suffix_tree = SuffixTree(string)
+    _, string_file, position_file = sys.argv
 
-    suffix_tree.add_string()
+    text = read_file(string_file)
 
-    current_node = suffix_tree.root
+    position = read_file(position_file)
 
-    position = [2, 8, 10, 6, 7]
-    suffix_array = []
-    suffix_tree.dfs(current_node, suffix_array, verbosity=1)
-    print(suffix_array)
+    position_list = [int(pos) for pos in position.split("\n")]
 
-    for p in position:
-        print(suffix_array.index(p - 1) + 1)
+    suffix_tree = SuffixTree(text)
+
+    suffix_array = suffix_tree.get_suffix_array()
+
+    rank_arr = get_rank_from_position(suffix_array, position_list)
+
+    rank_str = "\n".join(map(str, rank_arr))
+
+    write_file("output_ukkonen.txt", rank_str)
