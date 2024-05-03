@@ -1,48 +1,123 @@
-import sys
-from tools import read_file, write_file, ASCII_NUM, NAN, get_index_from_char
-
+from tools import ASCII_NUM, NAN, get_index_from_char
 
 global_end = float("inf")
 
 
 class Node:
-    def __init__(self):
+    """
+    Represents a node in a Suffix Tree data structure
+
+    Each node contains a fixed size list of children representing the edges connecting
+    children to current node
+    If the node is a leaf, then leaf number will be set to the suffix position, else it
+    will be defaulted to NAN. NAN means that node is not a leaf
+    Each internal node will have a suffix link from current node to the jump node 
+
+    Attributes:
+        children (list[Edge]): A list representing child edges
+        leaf_num (int): Leaf number representing the suffix position
+        suffix_link (Node): References to the node to jump to
+    """
+
+    def __init__(self) -> None:
         self.children = [None] * ASCII_NUM
         self.leaf_num = NAN
         self.suffix_link = None
 
 
 class Edge:
-    def __init__(self, start, end):
+    """
+    Represents an edge in a Suffix Tree that connects 2 nodes
+
+    Each edge will store the start point and end point of the string and the
+    child node that the edge is connecting to
+
+    Attributes:
+        start_point (int): The starting index of the string for the edge
+        end_point (int): The end index of the string for the edge
+        child_node (Node): The node that the edge is connecting to
+    """
+
+    def __init__(self, start: int, end: int) -> None:
         self.start_point = start
         self.end_point = end
         self.child_node = None
 
 
 class SuffixTree:
+    """
+    Represents a Suffix Tree that utilizes Ukkonen's algorithm to achieve
+    O(n) linear time Suffix tree construction
+
+    Attributes:
+        string (str): The input string that the suffix tree will be constructed with
+        root (Node): Root node of the tree
+        active_node (Node): Current active node during construction, to perform tricks
+        remainder_start (int): Start point of the remainder string
+        remainder_end (int): End point of the remainder string
+        last_j (int): Pointer for extension to skip rule 1s in rapid leaf extension
+        prev_added_node (Node): Internal node that was previously added in rule 2 case 2 
+                                and waiting for suffix link
+    """
+
     def __init__(self, string):
         self.string = string
         self.root = Node()
+        # Root suffix link is itself
+        self.root.suffix_link = self.root
         self.active_node = None
         self.remainder_start = 0
         self.remainder_end = -1
         self.last_j = -1
         self.prev_added_node = None
 
+        # Build suffix tree
         self.add_string()
 
-    def get_remainder_length(self):
+    def get_remainder_length(self) -> int:
+        """
+        Returns the length of the remainder substring
+
+        Returns:
+            int: The length of the current remainder substring
+        """
         return self.remainder_end - self.remainder_start + 1
 
-    def get_edge_length(self, edge: Edge, phase: int):
-        end_point = edge.end_point
-        # If the child code of the edge is a leaf then end point is your phase
-        if edge.child_node.leaf_num != NAN:
-            end_point = phase
+    def get_edge_length(self, edge: Edge, phase: int) -> int:
+        """
+        Returns the length of the edge that was passed in
 
+        Parameters:
+            edge (Edge): Edge to compute length with
+            phase (int): Current phase number to override if global_end is used
+
+        Returns:
+            int: Length of the edge
+        """
+        # If the child code of the edge is a leaf then end point is the current phase
+        end_point = phase if edge.child_node.leaf_num != NAN else edge.end_point
         return end_point - edge.start_point + 1
 
-    def skip_count(self, phase):
+    def skip_count(self, phase: int) -> tuple[int, Edge]:
+        """
+        Performs skip counting operation during suffix tree construction
+
+        Check if there's a remainder from previous phase (rule 3) then skip count
+        down to the node that holds the remainder_end, while changing active node
+        if there's an internal node in the middle of the skip count
+        During skip counting, if remainder length == edge length then take the 
+        phase character for the remainder start instead
+
+        If there's no remainder, then take the current phase character and the 
+        corresponding edge for the character from the active node
+
+        Parameters:
+            phase (int): Current phase during suffix tree construction
+
+        Returns:
+            tuple(int, edge): The decimal representation of ascii character and
+                              the child edge for the ascii character
+        """
         # Perform skip count, get length of remainder
         remainder_length = self.get_remainder_length()
 
@@ -83,7 +158,27 @@ class SuffixTree:
 
         return next_edge_index, next_edge
 
-    def suffix_extension(self, phase, j, next_edge_index, next_edge):
+    def suffix_extension(self, phase: int, j: int, next_edge_index: int, next_edge: Edge) -> bool:
+        """
+        Extends the suffix tree at a given phase and j extension
+
+        If there is no next edge then create an edge and leaf node (rule 2 case 1)
+        Any rule 2 will increment last j which will skip this extension at the following
+        phase
+        Else it will check if the phase character is matching with the character in the
+        corresponding character to check
+        If it already exist then rule 3, and break out of the loop
+        If not then rule 2 case 2, create new internal node
+
+        Parameters:
+            phase (int): Current phase number
+            j (int): Current extension in the phase
+            next_edge_index (int): next edge index from the active node
+            next_edge (Edge): Current edge that we are looking at
+
+        Returns:
+            bool: True if should break out of phase, false otherwise
+        """
         # If edge doesn't exist then create edge on existing node rule 2 case 1
         if not next_edge:
             # Rule 2 case 1 (create edge and leaf)
@@ -114,7 +209,9 @@ class SuffixTree:
                 self.remainder_end = char_to_check_index
                 # Resolve any suffix link, set to active node
                 if self.prev_added_node:
-                    self.prev_added_node = self.active_node
+                    self.prev_added_node.suffix_link = self.active_node
+
+                # Case 3, break out of loop
                 return True
 
             # Rule 2 Case 2 where character doesn't match character in edge
@@ -160,15 +257,21 @@ class SuffixTree:
 
         return False
 
-    def suffix_link_jump(self):
-        # Moving to next extension
+    def suffix_link_jump(self) -> None:
+        """
+        Moves to next extension through suffix link or decrement remainder length
+        """
+        # If active node is root and there's remainder, then remove the first character in remainder
         if self.active_node == self.root and self.get_remainder_length() > 0:
             self.remainder_start += 1
-
+        # If active node is not the root then move through suffix link to the next node (Every internal node will have a link)
         elif self.active_node != self.root:
             self.active_node = self.active_node.suffix_link
 
-    def add_string(self):
+    def add_string(self) -> None:
+        """
+        Construct suffix tree using the given string
+        """
         n = len(self.string)
         self.active_node = self.root
 
@@ -176,7 +279,17 @@ class SuffixTree:
         for i in range(n):
             self.add_char(i)
 
-    def add_char(self, phase: int):
+    def add_char(self, phase: int) -> None:
+        """
+        Perform extension for the given phase
+
+        First, perform skip counting to get the edge.
+        Then, perform suffix extension with the given edge and resolve any suffix links
+        Finally, perform suffix link jumps at the end of each extension
+
+        Parameters:
+            phase (int): Current phase number
+        """
         self.prev_added_node = None
 
         for j in range(self.last_j + 1, phase + 1):
@@ -190,24 +303,58 @@ class SuffixTree:
             # perform suffix link jump at the end of extension
             self.suffix_link_jump()
 
-    def dfs(self, node, suffix_array, depth=0, verbosity=0):
+    def dfs(self, node: Node, suffix_array: list[int], depth: int = 0, verbosity: int = 0) -> None:
+        """
+        Perform depth first search through the tree going from left to right, since we are
+        using a fixed children array size and this array will give us the lexicographic order, 
+        thus we can construct our suffix array.
+
+        Parameters:
+            node (Node): The current node that is being traversed
+            suffix_array (list[int]): Suffix array that will contain all the suffix numbers at the end
+            depth (int): Depth of the tree that we're traversing, used for logging
+            verbosity (int): Determines whether to display the tree or not
+        """
+        # Loops through each children in current node and checks if there's an edge or not
         for child in node.children:
+            # If there's an edge then check if it a leaf or not
             if child:
                 if verbosity:
                     print(
                         "|- " * depth + self.string[child.start_point: min(child.end_point, len(self.string)-1) + 1])
+                # If it is a leaf then append into the suffix array
                 if child.child_node.leaf_num != NAN:
                     suffix_array.append(child.child_node.leaf_num)
+                # Depth first search through the child node
                 self.dfs(child.child_node, suffix_array, depth+1, verbosity)
 
-    def get_suffix_array(self):
+    def get_suffix_array(self) -> None:
+        """
+        Gets the suffix array using depth first search starting from the root
+
+        Returns:
+            list[int] : Returns the suffix array for the suffix tree in O(n) time
+        """
         suffix_array = []
-        self.dfs(self.root, suffix_array)
+        # Perform dfs starting from the root
+        self.dfs(self.root, suffix_array, verbosity=1)
         return suffix_array
 
 
-def get_rank_from_position(suffix_array, position_list):
+def get_rank_from_position(suffix_array: list[int], position_list: list[int]) -> list[int]:
+    """
+    Gets the ranks of the suffixes given the position in the position list
+
+    Parameters:
+        suffix_array (list[int]): Contains the suffix array for the string
+        position_list (list[int]): List of positions for suffixes
+
+    Returns:
+        list[int]: List containing all the ranks of the positions of the suffix
+    """
     rank_arr = []
+    # For each of the position get the index of position in the suffix array and add by 1 to
+    # make it 1 base
     for p in position_list:
         rank_arr.append(suffix_array.index(p - 1) + 1)
 
@@ -215,20 +362,14 @@ def get_rank_from_position(suffix_array, position_list):
 
 
 if __name__ == "__main__":
-    _, string_file, position_file = sys.argv
-
-    text = read_file(string_file)
-
-    position = read_file(position_file)
-
-    position_list = [int(pos) for pos in position.split("\n")]
-
+    text = "onceuponatimetherewasalittleboywholivedinalovelyvillagenestledbetweentallmountainsandlushgreenforestshehadafurrycompanionalwaysbyhissideandtogethertheyembarkedoncountlessadventuresexploringthedepthsofthemysteriouswoodsandclimbingthetoweringpeaksonefatefuldaytheydiscoveredasecretcavewhichledtoanenchantedrealmfullofwondersandmysteriesastheylaterexploredthecavetheyencounteredmagicalcreaturesandunearthlybeautiesthatfilledtheirheartswithaweandamazementtheyknewtheyhadfoundaplaceunliketheworldtheyknewandresolvedtovisititagainandagainforitwasadventureawaitingforeachsteptheytook$"
     suffix_tree = SuffixTree(text)
 
     suffix_array = suffix_tree.get_suffix_array()
 
-    rank_arr = get_rank_from_position(suffix_array, position_list)
+    print(suffix_array)
 
-    rank_str = "\n".join(map(str, rank_arr))
+    position = []
 
-    write_file("output_ukkonen.txt", rank_str)
+    ranks = get_rank_from_position(suffix_array, position)
+    print(ranks)

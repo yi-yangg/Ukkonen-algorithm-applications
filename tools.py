@@ -42,14 +42,3 @@ def get_index_from_char(c: str):
 
 def get_char_from_index(index):
     return chr(index + MIN_ASCII_CHAR_NO)
-
-
-def decimal_to_binary(num):
-    binary = ""
-
-    while num > 0:
-        remainder = num % 2
-        binary = str(remainder) + binary
-        num //= 2
-
-    return bitarray(binary)
